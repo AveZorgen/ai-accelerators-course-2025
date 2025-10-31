@@ -29,7 +29,7 @@ std::vector<float> make_matrix(std::size_t n) {
   return matrix;
 }
 
-static inline void process_row(const float *row, std::size_t n, float *out) {
+static inline void process_row(const float* row, std::size_t n, float* out) {
   float rowsum = 0.0f;
   for (std::size_t j = 0; j < n; j++) {
     rowsum += std::exp(row[j]);
@@ -42,8 +42,8 @@ static inline void process_row(const float *row, std::size_t n, float *out) {
 
 __m256 exp256_ps(__m256 x);
 
-static inline void process_row_simd(const float *row, std::size_t n,
-                                    float *out) {
+static inline void process_row_simd(const float* row, std::size_t n,
+                                    float* out) {
   auto y = _mm256_setzero_ps();
   std::size_t j = 0;
   for (; j + 8 <= n; j += 8) {
@@ -74,60 +74,96 @@ static inline void process_row_simd(const float *row, std::size_t n,
   }
 }
 
-std::vector<float> run_sequential(const std::vector<float> &matrix,
+std::vector<float> run_sequential(const std::vector<float>& matrix,
                                   std::size_t n) {
-  std::vector<float> res(n * n);
+  std::vector<float> result(n * n, 0.0f);
 
-  for (std::size_t i = 0; i < n; i++) {
-    process_row(&matrix[i * n], n, &res[i * n]);
+  for (int i = 0; i < n; ++i) {
+    for (int j = 0; j < n; ++j) {
+      float sum = 0.0f;
+      for (int k = 0; k < n; ++k) {
+        sum += static_cast<float>(matrix[i * n + k] * matrix[k * n + j]);
+      }
+      result[i * n + j] = sum;
+    }
+    process_row(&result[i * n], n, &result[i * n]);
   }
 
-  return res;
+  return result;
 }
 
-std::vector<float> run_openmp(const std::vector<float> &matrix, std::size_t n) {
-  std::vector<float> res(n * n);
+std::vector<float> run_openmp(const std::vector<float>& matrix, std::size_t n) {
+  std::vector<float> result(n * n, 0.0f);
 
-#pragma omp parallel for
-  for (std::size_t i = 0; i < n; i++) {
-    process_row(&matrix[i * n], n, &res[i * n]);
+  for (int i = 0; i < n; ++i) {
+    float rowsum = 0.0f;
+    for (int j = 0; j < n; ++j) {
+      float sum = 0.0f;
+      for (int k = 0; k < n; ++k) {
+        sum += static_cast<float>(matrix[i * n + k] * matrix[k * n + j]);
+      }
+      const float exp_val = std::exp(sum);
+      rowsum += exp_val;
+      result[i * n + j] = exp_val;
+    }
+    const float inv_rowsum = 1.0f / rowsum;
+    for (int j = 0; j < n; ++j) {
+      result[i * n + j] *= inv_rowsum;
+    }
   }
 
-  return res;
+  return result;
 }
 
-std::vector<float> run_simd(const std::vector<float> &matrix, std::size_t n) {
-  std::vector<float> res(n * n);
-
-  for (std::size_t i = 0; i < n; i++) {
-    process_row_simd(&matrix[i * n], n, &res[i * n]);
+std::vector<float> run_simd(const std::vector<float>& matrix, std::size_t n) {
+  std::vector<float> result(n * n, 0.0f);
+  for (int i = 0; i < n; ++i) {
+    float rowsum = 0.0f;
+    for (int k = 0; k < n; ++k) {
+      for (int j = 0; j < n; ++j) {
+        float el = static_cast<float>(matrix[i * n + k] * matrix[k * n + j]);
+        result[i * n + j] += el;
+      }
+    }
+    for (int j = 0; j < n; ++j) {
+      result[i * n + j] = std::exp(result[i * n + j]);
+      rowsum += result[i * n + j];
+    }
+    const float inv_rowsum = 1.0f / rowsum;
+    for (int j = 0; j < n; ++j) {
+      result[i * n + j] *= inv_rowsum;
+    }
   }
 
-  return res;
+  return result;
 }
 
-std::vector<float> run_openmp_simd(const std::vector<float> &matrix,
+std::vector<float> run_openmp_simd(const std::vector<float>& matrix,
                                    std::size_t n) {
-  std::vector<float> res(n * n);
-
-#pragma omp parallel for
-  for (std::size_t i = 0; i < n; i++) {
-    process_row_simd(&matrix[i * n], n, &res[i * n]);
+  std::vector<float> result(n * n, 0.0f);
+  for (int i = 0; i < n; ++i) {
+    for (int k = 0; k < n; ++k) {
+      for (int j = 0; j < n; ++j) {
+        result[i * n + j] +=
+            static_cast<float>(matrix[i * n + k] * matrix[k * n + j]);
+      }
+    }
+    process_row_simd(&result[i * n], n, &result[i * n]);
   }
 
-  return res;
+  return result;
 }
 
-double measure_seconds(const std::function<std::vector<float>()> &work,
-                       std::vector<float> &result_store) {
+double measure_seconds(const std::function<std::vector<float>()>& work,
+                       std::vector<float>& result_store) {
   const auto start = std::chrono::high_resolution_clock::now();
   result_store = work();
   const auto stop = std::chrono::high_resolution_clock::now();
   return std::chrono::duration<double>(stop - start).count();
 }
 
-float max_abs_diff(const std::vector<float> &baseline,
-                   const std::vector<float> &candidate) {
+float max_abs_diff(const std::vector<float>& baseline,
+                   const std::vector<float>& candidate) {
   if (baseline.size() != candidate.size()) {
     throw std::runtime_error(
         "Result size mismatch while validating correctness");
@@ -160,7 +196,7 @@ std::string format_diff(float diff) {
   return oss.str();
 }
 
-void print_report(const std::string_view &testName, const RunResult &result) {
+void print_report(const std::string_view& testName, const RunResult& result) {
   if (result) {
     std::cout << testName << ": " << format_time(result.seconds)
               << " sec (diff: " << format_diff(result.diff) << ")\n";
@@ -169,22 +205,22 @@ void print_report(const std::string_view &testName, const RunResult &result) {
   }
 }
 
-RunResult run_test_case(const std::function<std::vector<float>()> &runner,
-                        const std::vector<float> &baseline,
-                        const std::string_view &methodName) {
+RunResult run_test_case(const std::function<std::vector<float>()>& runner,
+                        const std::vector<float>& baseline,
+                        const std::string_view& methodName) {
   RunResult result;
   try {
     result.seconds = measure_seconds(runner, result.result);
     result.diff = max_abs_diff(baseline, result.result);
     result.success = true;
-  } catch (const std::exception &ex) {
+  } catch (const std::exception& ex) {
     std::cerr << methodName << " method failed: " << ex.what() << '\n';
   }
   return result;
 }
 }  // namespace
 
-int main(int argc, char *argv[]) {
+int main(int argc, char* argv[]) {
   try {
     if (argc != 2) {
       std::cerr << "Usage: " << argv[0] << " <matrix_size_n>\n";
@@ -215,7 +251,7 @@ int main(int argc, char *argv[]) {
     print_report("OpenMP + SIMD", omp_simd_res);
 
     return EXIT_SUCCESS;
-  } catch (const std::exception &ex) {
+  } catch (const std::exception& ex) {
     std::cerr << "Error: " << ex.what() << '\n';
   } catch (...) {
     std::cerr << "Unknown error\n";
