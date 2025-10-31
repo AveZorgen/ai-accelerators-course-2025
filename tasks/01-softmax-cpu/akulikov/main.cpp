@@ -78,10 +78,11 @@ std::vector<float> run_sequential(const std::vector<float>& matrix,
                                   std::size_t n) {
   std::vector<float> result(n * n, 0.0f);
 
-  for (int i = 0; i < n; ++i) {
-    for (int j = 0; j < n; ++j) {
+#pragma omp parallel for
+  for (size_t i = 0; i < n; ++i) {
+    for (size_t j = 0; j < n; ++j) {
       float sum = 0.0f;
-      for (int k = 0; k < n; ++k) {
+      for (size_t k = 0; k < n; ++k) {
         sum += static_cast<float>(matrix[i * n + k] * matrix[k * n + j]);
       }
       result[i * n + j] = sum;
@@ -95,11 +96,12 @@ std::vector<float> run_sequential(const std::vector<float>& matrix,
 std::vector<float> run_openmp(const std::vector<float>& matrix, std::size_t n) {
   std::vector<float> result(n * n, 0.0f);
 
-  for (int i = 0; i < n; ++i) {
+#pragma omp parallel for
+  for (size_t i = 0; i < n; ++i) {
     float rowsum = 0.0f;
-    for (int j = 0; j < n; ++j) {
+    for (size_t j = 0; j < n; ++j) {
       float sum = 0.0f;
-      for (int k = 0; k < n; ++k) {
+      for (size_t k = 0; k < n; ++k) {
         sum += static_cast<float>(matrix[i * n + k] * matrix[k * n + j]);
       }
       const float exp_val = std::exp(sum);
@@ -107,7 +109,7 @@ std::vector<float> run_openmp(const std::vector<float>& matrix, std::size_t n) {
       result[i * n + j] = exp_val;
     }
     const float inv_rowsum = 1.0f / rowsum;
-    for (int j = 0; j < n; ++j) {
+    for (size_t j = 0; j < n; ++j) {
       result[i * n + j] *= inv_rowsum;
     }
   }
@@ -117,20 +119,22 @@ std::vector<float> run_openmp(const std::vector<float>& matrix, std::size_t n) {
 
 std::vector<float> run_simd(const std::vector<float>& matrix, std::size_t n) {
   std::vector<float> result(n * n, 0.0f);
-  for (int i = 0; i < n; ++i) {
+
+#pragma omp parallel for
+  for (size_t i = 0; i < n; ++i) {
     float rowsum = 0.0f;
-    for (int k = 0; k < n; ++k) {
-      for (int j = 0; j < n; ++j) {
+    for (size_t k = 0; k < n; ++k) {
+      for (size_t j = 0; j < n; ++j) {
         float el = static_cast<float>(matrix[i * n + k] * matrix[k * n + j]);
         result[i * n + j] += el;
       }
     }
-    for (int j = 0; j < n; ++j) {
+    for (size_t j = 0; j < n; ++j) {
       result[i * n + j] = std::exp(result[i * n + j]);
       rowsum += result[i * n + j];
     }
     const float inv_rowsum = 1.0f / rowsum;
-    for (int j = 0; j < n; ++j) {
+    for (size_t j = 0; j < n; ++j) {
       result[i * n + j] *= inv_rowsum;
     }
   }
@@ -141,9 +145,11 @@ std::vector<float> run_simd(const std::vector<float>& matrix, std::size_t n) {
 std::vector<float> run_openmp_simd(const std::vector<float>& matrix,
                                    std::size_t n) {
   std::vector<float> result(n * n, 0.0f);
-  for (int i = 0; i < n; ++i) {
-    for (int k = 0; k < n; ++k) {
-      for (int j = 0; j < n; ++j) {
+
+#pragma omp parallel for
+  for (size_t i = 0; i < n; ++i) {
+    for (size_t k = 0; k < n; ++k) {
+      for (size_t j = 0; j < n; ++j) {
         result[i * n + j] +=
             static_cast<float>(matrix[i * n + k] * matrix[k * n + j]);
       }
