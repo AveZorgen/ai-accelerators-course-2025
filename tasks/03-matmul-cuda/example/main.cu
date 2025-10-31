@@ -28,41 +28,88 @@
 
 namespace {
 std::vector<__half> make_input_matrix(std::size_t n) {
-  throw std::runtime_error("make_input_matrix not implemented");
+  static std::mt19937 gen_eng{42};
+
+  std::normal_distribution<__half> dist{};
+  auto gen = [&]() { return dist(gen_eng); };
+
+  std::vector<__half> matrix(n * n);
+
+  std::generate(matrix.begin(), matrix.end(), gen);
+
+  return matrix;
 }
 
-std::vector<float> run_openmp_reference(const std::vector<__half> &matrix,
+std::vector<float> run_openmp_reference(const std::vector<__half>& matrix,
                                         std::size_t n) {
-  throw std::runtime_error("OpenMP reference not implemented");
+  std::vector<float> result(n * n, 0.0f);
+
+  for (int i = 0; i < n; ++i) {
+    float rowsum = 0.0f;
+    for (int j = 0; j < n; ++j) {
+      float sum = 0.0f;
+      for (int k = 0; k < n; ++k) {
+        sum += static_cast<float>(matrix[i * n + k] * matrix[k * n + j]);
+      }
+      const float exp_val = std::exp(sum);
+      rowsum += exp_val;
+      result[i * n + j] = exp_val;
+    }
+    const float inv_rowsum = 1.0f / rowsum;
+    for (int j = 0; j < n; ++j) {
+      result[i * n + j] = result[i * n + j] * inv_rowsum;
+    }
+  }
+
+  std::vector<float> result(n * n, 0.0f);
+  for (int i = 0; i < n; ++i) {
+    float rowsum = 0.0f;
+    for (int k = 0; k < n; ++k) {
+      for (int j = 0; j < n; ++j) {
+        float el = static_cast<float>(matrix[i * n + k] * matrix[k * n + j]);
+        result[i * n + j] += el;
+      }
+    }
+    for (int j = 0; j < n; ++j) {
+      result[i * n + j] = std::exp(result[i * n + j]);
+      rowsum += result[i * n + j];
+    }
+    const float inv_rowsum = 1.0f / rowsum;
+    for (int j = 0; j < n; ++j) {
+      result[i * n + j] *= inv_rowsum;
+    }
+  }
+
+  return result;
 }
 
-void warmup_wmma(const std::vector<__half> &matrix, std::size_t n) {
+void warmup_wmma(const std::vector<__half>& matrix, std::size_t n) {
   throw std::runtime_error("WMMA warm-up not implemented");
 }
 
-std::vector<float> run_wmma(const std::vector<__half> &matrix, std::size_t n) {
+std::vector<float> run_wmma(const std::vector<__half>& matrix, std::size_t n) {
   throw std::runtime_error("WMMA method not implemented");
 }
 
-void warmup_cutlass(const std::vector<__half> &matrix, std::size_t n) {
+void warmup_cutlass(const std::vector<__half>& matrix, std::size_t n) {
   throw std::runtime_error("CUTLASS warm-up not implemented");
 }
 
-std::vector<float> run_cutlass(const std::vector<__half> &matrix,
+std::vector<float> run_cutlass(const std::vector<__half>& matrix,
                                std::size_t n) {
   throw std::runtime_error("CUTLASS method not implemented");
 }
 
-double measure_seconds(const std::function<std::vector<float>()> &work,
-                       std::vector<float> &result_store) {
+double measure_seconds(const std::function<std::vector<float>()>& work,
+                       std::vector<float>& result_store) {
   const auto start = std::chrono::high_resolution_clock::now();
   result_store = work();
   const auto stop = std::chrono::high_resolution_clock::now();
   return std::chrono::duration<double>(stop - start).count();
 }
 
-float max_abs_diff(const std::vector<float> &baseline,
-                   const std::vector<float> &candidate) {
+float max_abs_diff(const std::vector<float>& baseline,
+                   const std::vector<float>& candidate) {
   if (baseline.size() != candidate.size()) {
     throw std::runtime_error(
         "Result size mismatch while validating correctness");
@@ -95,7 +142,7 @@ std::string format_diff(float diff) {
   return oss.str();
 }
 
-void print_report(std::string_view testName, const RunResult &result) {
+void print_report(std::string_view testName, const RunResult& result) {
   if (result) {
     std::cout << testName << ": " << format_time(result.seconds)
               << " sec (diff: " << format_diff(result.diff) << ")\n";
@@ -105,7 +152,7 @@ void print_report(std::string_view testName, const RunResult &result) {
 }
 }  // namespace
 
-int main(int argc, char *argv[]) {
+int main(int argc, char* argv[]) {
   try {
     if (argc != 2) {
       std::cerr << "Usage: " << argv[0] << " <matrix_size_n>\n";
@@ -129,7 +176,7 @@ int main(int argc, char *argv[]) {
                                          wmma_res.result);
       wmma_res.diff = max_abs_diff(openmp_result, wmma_res.result);
       wmma_res.success = true;
-    } catch (const std::exception &ex) {
+    } catch (const std::exception& ex) {
       std::cerr << "WMMA method failed: " << ex.what() << '\n';
     }
 
@@ -140,7 +187,7 @@ int main(int argc, char *argv[]) {
           [&]() { return run_cutlass(input, n); }, cutlass_res.result);
       cutlass_res.diff = max_abs_diff(openmp_result, cutlass_res.result);
       cutlass_res.success = true;
-    } catch (const std::exception &ex) {
+    } catch (const std::exception& ex) {
       std::cerr << "CUTLASS method failed: " << ex.what() << '\n';
     }
 
@@ -149,7 +196,7 @@ int main(int argc, char *argv[]) {
     print_report("CUTLASS", cutlass_res);
 
     return EXIT_SUCCESS;
-  } catch (const std::exception &ex) {
+  } catch (const std::exception& ex) {
     std::cerr << "Error: " << ex.what() << '\n';
   } catch (...) {
     std::cerr << "Unknown error\n";
