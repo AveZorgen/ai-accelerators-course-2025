@@ -50,10 +50,16 @@ jobs:
       - name: Install build tooling
         run: |
           apt-get update
-          apt-get install -y --no-install-recommends build-essential cmake
+          apt-get install -y --no-install-recommends build-essential cmake git
           rm -rf /var/lib/apt/lists/*
+      - name: Fetch CUTLASS
+        run: |
+          git clone --depth 1 https://github.com/NVIDIA/cutlass.git third_party/cutlass
+          ls -la third_party/cutlass
+          pwd
       - name: Configure CUDA targets
-        run: cmake -S . -B build/cuda -DCMAKE_BUILD_TYPE=Release -DENABLE_CUDA=ON
+        run: |
+          cmake -S . -B build/cuda -DCMAKE_BUILD_TYPE=Release -DENABLE_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=75 -DCUTLASS_ROOT="$(pwd)/third_party/cutlass"
       - name: Build CUDA targets
         run: cmake --build build/cuda --config Release
 
