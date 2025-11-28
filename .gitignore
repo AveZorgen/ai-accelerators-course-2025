@@ -56,3 +56,9 @@ cmake-build-*/
 .vscode/
 .vs/
 .cache/
+
+tasks/*ascend/*/out
+tasks/*ascend/*/ascendc_kernels_bbit
+tasks/*ascend/*/OPPROF*
+tasks/*ascend/*/npuchk
+tasks/*ascend/*/cceprint
