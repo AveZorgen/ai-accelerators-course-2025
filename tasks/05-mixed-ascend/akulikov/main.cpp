@@ -26,7 +26,7 @@ int32_t main(int32_t argc, char* argv[]) {
       platform_ascendc::PlatformAscendCManager::GetInstance(socVersion);
   int M = 64 * 4;
   int N = 64 * 3;
-  int K = 128;
+  int K = 64;
   size_t aFileSize = M * K * sizeof(int16_t);
   size_t bFileSize = K * N * sizeof(int16_t);
   size_t cFileSize = M * N * sizeof(float);

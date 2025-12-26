@@ -62,6 +62,8 @@ class MatmulLeakyKernel {
   TCubeTiling tiling;
   AscendC::TQue<AscendC::TPosition::VECOUT, 1> reluOutQueue_;
   AscendC::TBuf<AscendC::TPosition::VECCALC> tmpQueue;
+  AscendC::TQue<AscendC::TPosition::VECIN, 2> inQueueX, inQueueY;
+  AscendC::TQue<AscendC::TPosition::VECOUT, 2> outQueueZ;
 };
 
 /**
@@ -99,6 +101,8 @@ __aicore__ inline void MatmulLeakyKernel<aType, bType, cType, biasType>::Init(
 
   pipe->InitBuffer(
       tmpQueue, (tiling.baseM + tiling.baseM * tiling.baseN) * sizeof(cType));
+  pipe->InitBuffer(inQueueX, 2, tiling.baseM * tiling.baseN * sizeof(cType));
+  pipe->InitBuffer(outQueueZ, 2, tiling.baseM * tiling.baseN * sizeof(cType));
 }
 
 /**
@@ -134,20 +138,79 @@ MatmulLeakyKernel<aType, bType, cType, biasType>::Process(
                                                 // baseN, sync is set true here.
     reluOutLocal = reluOutQueue_.AllocTensor<cType>();
     matmulObj.template GetTensorC<true>(reluOutLocal, false, true);
+    AscendC::Exp(reluOutLocal, reluOutLocal, tiling.baseM * tiling.baseN);
     AscendC::Add(tmpLocal, tmpLocal, reluOutLocal, tiling.baseM * tiling.baseN);
     reluOutQueue_.EnQue(reluOutLocal);
     CopyOut(computeRound);
     if ((computeRound + 1) % (tiling.singleCoreN / tiling.baseN) == 0) {
-      AscendC::SumParams sumParams = {tiling.baseM, tiling.baseN, tiling.baseN};
+      AscendC::SumParams sumParams = {static_cast<uint32_t>(tiling.baseM),
+                                      static_cast<uint32_t>(tiling.baseN),
+                                      static_cast<uint32_t>(tiling.baseN)};
       AscendC::Sum(tmpLocal2, tmpLocal, sumParams);
-      AscendC::printf("computeRound:%d:%d:%lf\n", AscendC::GetBlockIdx(),
-                      computeRound, tmpLocal2.GetValue(0));
-      for (int i = 0; i < tiling.singleCoreN; i++) {
-        // load [baseM, 1] -> exp -> div by [baseM, 1]
-      }
+      // int row = tiling.singleCoreN / tiling.baseN * tiling.baseM * tiling.N;
+      int row = ((computeRound + 1) - tiling.singleCoreN / tiling.baseN) *
+                tiling.baseN * tiling.baseM;
+      AscendC::printf("computeRound:%d: %d:%d : %d:%d : %f\n",
+                      AscendC::GetBlockIdx(), computeRound,
+                      ((computeRound + 1) - tiling.singleCoreN / tiling.baseN),
+                      tiling.baseN * tiling.baseM, row, tmpLocal2.GetValue(0));
+
+      uint32_t srcShape_[] = {static_cast<uint32_t>(tiling.baseM), 1};
+      uint32_t dstShape_[] = {static_cast<uint32_t>(tiling.baseM),
+                              static_cast<uint32_t>(tiling.baseN)};
+      AscendC::Broadcast<cType, 2, 1>(tmpLocal, tmpLocal2, dstShape_,
+                                      srcShape_);
+      // for (int i = 0; i < tiling.singleCoreN; i++) {
+      //   // load [baseM, 1] -> exp -> div by [baseM, 1]
+      // }
       /* or */
       for (int i = 0; i < tiling.singleCoreN / tiling.baseN; i++) {
-        // load [baseM, baseN] -> exp -> div by [baseM, 1]
+        // load [baseM, baseN] -> exp -> div by [baseM, baseN]
+        {
+          AscendC::LocalTensor<cType> xLocal = inQueueX.AllocTensor<cType>();
+          AscendC::DataCopyParams repeatParams = {
+              static_cast<uint16_t>(tiling.baseM), /* blockCount */
+              static_cast<uint16_t>(tiling.baseN) * sizeof(cType) /
+                  32, /* blockLen */
+              static_cast<uint16_t>(tiling.singleCoreN - tiling.baseM) *
+                  sizeof(cType) / 32, /* srcGap */
+              0,                      /* dstGap */
+          };
+          AscendC::DataCopy(xLocal, cGlobal[row + i * tiling.baseN],
+                            repeatParams);
+          inQueueX.EnQue(xLocal);
+        }
+        {
+          AscendC::LocalTensor<cType> xLocal_ = inQueueX.DeQue<cType>();
+          AscendC::LocalTensor<cType> zLocal = outQueueZ.AllocTensor<cType>();
+
+          AscendC::Exp(xLocal_, xLocal_, tiling.baseM * tiling.baseN);
+          // AscendC::Div(xLocal_, xLocal_, tmpLocal, tiling.baseM *
+          // tiling.baseN);
+          AscendC::Div(zLocal, xLocal_, tmpLocal, tiling.baseM * tiling.baseN);
+          AscendC::printf("%d: DIV:%f,EXP:%f:D:%f\n", AscendC::GetBlockIdx(),
+                          zLocal.GetValue(0), xLocal_.GetValue(0),
+                          tmpLocal.GetValue(0));
+
+          outQueueZ.EnQue<cType>(zLocal);
+          inQueueX.FreeTensor(xLocal_);
+
+          AscendC::LocalTensor<cType> zLocal_ = outQueueZ.DeQue<cType>();
+          // AscendC::DataCopy(zGm[row_offset + progress * TILE_LENGTH],
+          // zLocal_,
+          //                   TILE_LENGTH);
+          AscendC::DataCopyParams repeatParams = {
+              static_cast<uint16_t>(tiling.baseM), /* blockCount */
+              static_cast<uint16_t>(tiling.baseN) * sizeof(cType) /
+                  32, /* blockLen */
+              0,      /* dstGap */
+              static_cast<uint16_t>(tiling.singleCoreN - tiling.baseM) *
+                  sizeof(cType) / 32, /* srcGap */
+          };
+          AscendC::DataCopy(cGlobal[row + i * tiling.baseN], zLocal_,
+                            repeatParams);
+          outQueueZ.FreeTensor(zLocal_);
+        }
       }
       AscendC::Duplicate(tmpLocal, cType(0), tiling.baseM * tiling.baseN);
     }

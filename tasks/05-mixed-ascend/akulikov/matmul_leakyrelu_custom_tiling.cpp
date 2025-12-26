@@ -24,7 +24,7 @@ using namespace std;
 void GenerateTiling(const char* socVersion, uint8_t* tilingBuf) {
   int M = 64 * 4;
   int N = 64 * 3;
-  int K = 128;
+  int K = 64;
 
   TPosition leftPosition = TPosition::GM;
   CubeFormat leftFormat = CubeFormat::ND;
