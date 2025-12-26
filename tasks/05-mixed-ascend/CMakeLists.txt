@@ -11,7 +11,7 @@ foreach(child ${child_dirs})
         set(target_name "run_mixed_ascend_${target_suffix}")
 
         add_custom_target(${target_name}
-            COMMAND bash run.sh --soc-version Ascend910B1 --run-mode sim
+            COMMAND bash run.sh --soc-version Ascend310P3 --run-mode sim
             WORKING_DIRECTORY "${child_path}"
             USES_TERMINAL
         )
