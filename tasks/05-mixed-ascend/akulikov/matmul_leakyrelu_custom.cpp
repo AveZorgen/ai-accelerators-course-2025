@@ -140,10 +140,9 @@ MatmulLeakyKernel<aType, bType, cType, biasType>::Process(
     matmulObj.template GetTensorC<true>(reluOutLocal, false, true);
     AscendC::Exp(reluOutLocal, reluOutLocal, tiling.baseM * tiling.baseN);
     AscendC::Add(tmpLocal, tmpLocal, reluOutLocal, tiling.baseM * tiling.baseN);
-    reluOutQueue_.EnQue(reluOutLocal);
-
     bool is_last_in_row = ((computeRound + 1) % roundN) == 0;
     if (!is_last_in_row) {
+      reluOutQueue_.EnQue(reluOutLocal);
       CopyOut(computeRound);
     }
     if (is_last_in_row) {
@@ -197,8 +196,8 @@ MatmulLeakyKernel<aType, bType, cType, biasType>::Process(
                             repeatParams_);
           outQueueZ.FreeTensor(zLocal_);
         } else {
-          AscendC::LocalTensor<cType> xLocal_ = reluOutQueue_.DeQue<cType>();
-          AscendC::Div(xLocal_, xLocal_, tmpLocal, tiling.baseM * tiling.baseN);
+          AscendC::Div(reluOutLocal, reluOutLocal, tmpLocal,
+                       tiling.baseM * tiling.baseN);
 
           uint32_t startOffset_last =
               (computeRound / roundN * tiling.baseM * tiling.singleCoreN +
@@ -210,9 +209,10 @@ MatmulLeakyKernel<aType, bType, cType, biasType>::Process(
               0,
               (uint16_t)((tiling.singleCoreN - tiling.baseN) * sizeof(cType) /
                          AscendC::DEFAULT_C0_SIZE)};
-          AscendC::DataCopy(cGlobal[startOffset_last], xLocal_, copyParam_last);
+          AscendC::DataCopy(cGlobal[startOffset_last], reluOutLocal,
+                            copyParam_last);
 
-          reluOutQueue_.FreeTensor(xLocal_);
+          reluOutQueue_.FreeTensor(reluOutLocal);
         }
       }
       AscendC::Duplicate(tmpLocal, cType(0), tiling.baseM * tiling.baseN);
