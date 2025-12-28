@@ -22,9 +22,9 @@ using namespace std;
  * @param  tilingBuf data buffer.
  */
 void GenerateTiling(const char* socVersion, uint8_t* tilingBuf) {
-  int M = 64 * 4;
-  int N = 64 * 3;
-  int K = 128;
+  int M = 64 * 14;
+  int N = 64 * 16;
+  int K = 256;
 
   TPosition leftPosition = TPosition::GM;
   CubeFormat leftFormat = CubeFormat::ND;

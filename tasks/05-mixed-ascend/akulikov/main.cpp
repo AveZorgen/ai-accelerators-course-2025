@@ -24,9 +24,9 @@ int32_t main(int32_t argc, char* argv[]) {
   const char* socVersion = SOC_VERSION;
   auto ascendcPlatform =
       platform_ascendc::PlatformAscendCManager::GetInstance(socVersion);
-  int M = 64 * 4;
-  int N = 64 * 3;
-  int K = 128;
+  int M = 64 * 14;
+  int N = 64 * 16;
+  int K = 256;
   size_t aFileSize = M * K * sizeof(int16_t);
   size_t bFileSize = K * N * sizeof(int16_t);
   size_t cFileSize = M * N * sizeof(float);
@@ -42,7 +42,6 @@ int32_t main(int32_t argc, char* argv[]) {
 #else
   uint32_t blockDim = 1;
 #endif
-  std::cout << "blockDim: " << blockDim << "\n";
 
 #ifdef ASCENDC_CPU_DEBUG
   uint8_t* a = (uint8_t*)AscendC::GmAlloc(aFileSize);
